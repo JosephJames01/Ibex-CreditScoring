@@ -598,8 +598,85 @@ def _scrape_hashes(log: str) -> Dict[str, Optional[str]]:
     return got
 
 
+def _read_record(user_hash: str) -> Dict[str, Any]:
+    """Latest on-chain record for a userHash, without a node runtime.
+
+    Prefers the direct JSON-RPC reader (works on the hosted python-only
+    service) and falls back to the hardhat read script when the chain
+    project is checked out locally. Returns {"ok", "log", "rec"} with rec
+    shaped exactly like _scrape_hashes output.
+    """
+    try:
+        from serve import chain_rpc
+    except Exception:
+        chain_rpc = None
+    if chain_rpc is not None and chain_rpc.read_available():
+        try:
+            return chain_rpc.read_record(user_hash)
+        except chain_rpc.ChainRevert as exc:
+            raise HTTPException(exc.status, str(exc))
+    res = _run_node("scripts/readLatestRecord.js", {"USER_HASH": user_hash})
+    return {"ok": res["ok"], "log": res["log"],
+            "rec": _scrape_hashes(res["log"])}
+
+
 def _explorer() -> Tuple[str, str, int]:
     return EXPLORERS.get(CHAIN_NETWORK, (CHAIN_NETWORK, "", 0))
+
+
+def _verify_event_rpc(ev: Dict[str, Any]) -> Tuple[bool, Dict[str, Any], str]:
+    """verifyScoreEvent.js without node: recompute locally with chain_hash
+    (byte-identical to the chain repo's utils), read the registry over
+    JSON-RPC, and compare every field the script compares."""
+    from serve import chain_rpc
+    from serve.chain_hash import (user_hash, score_event_hash,
+                                  model_version_hash)
+    salt = _user_salt()
+    if len(salt) < 16:
+        raise HTTPException(
+            500, "USER_SALT is not configured (16 chars minimum). It must "
+                 "be byte-identical to the value used when the score was "
+                 "anchored.")
+    uh = user_hash(str(ev.get("userId", "")), salt)
+    seh = score_event_hash(ev)
+    mvh = model_version_hash(str(ev.get("modelVersion", "")))
+    period = chain_rpc.score_period_of(ev)
+    try:
+        rec = chain_rpc.read_record(uh)["rec"]
+    except chain_rpc.ChainRevert as exc:
+        raise HTTPException(exc.status, str(exc))
+    on_seh = str(rec.get("scoreEventHash") or "").lower()
+    on_root = str(rec.get("merkleRoot") or "").lower()
+    on_mvh = str(rec.get("modelVersionHash") or "").lower()
+    on_period = int(rec.get("scorePeriod") or 0)
+    # Single-leaf tree: the anchored merkle root IS the score event hash,
+    # so an empty proof verifies iff root == leaf.
+    valid = bool(
+        on_seh
+        and on_seh == seh.lower()
+        and on_root == seh.lower()
+        and on_mvh == mvh.lower()
+        and on_period == period)
+    log = ("(direct JSON-RPC verification -- no node runtime)\n"
+           f"userHash: {uh}\n"
+           f"scoreEventHash local: {seh}\n"
+           f"scoreEventHash chain: {on_seh or '(no record)'}\n"
+           f"modelVersionHash chain: {on_mvh or '(no record)'}\n"
+           f"scorePeriod chain: {on_period or '(no record)'}\n"
+           f"Verification result: {'VALID' if valid else 'INVALID'}\n")
+    hashes = {
+        "userHash": uh,
+        "scoreEventHash": on_seh or None,
+        "merkleRoot": on_root or None,
+        "modelVersionHash": on_mvh or None,
+        "txHash": None,
+        "score": None,
+        "band": None,
+        "timestamp": rec.get("timestamp"),
+        "timestampEpoch": rec.get("timestampEpoch"),
+        "scorePeriod": on_period or None,
+    }
+    return valid, hashes, log
 
 
 class VerifyEventBody(BaseModel):
@@ -629,14 +706,30 @@ def verify_event(body: VerifyEventBody):
     canonical = json.dumps(ev, sort_keys=True, separators=(",", ":"))
     local_sha = hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
-    tmp = os.path.join(CHAIN_DIR or ".", "_verify_input.json")
-    with open(tmp, "w", encoding="utf-8") as fh:
-        json.dump(ev, fh, indent=2)
+    valid: Optional[bool] = None
+    hashes: Dict[str, Any] = {}
+    res: Dict[str, Any] = {"ok": False, "log": ""}
+    try:
+        from serve import chain_rpc as _crpc
+        if _crpc.read_available():
+            valid, hashes, rpc_log = _verify_event_rpc(ev)
+            res = {"ok": True, "log": rpc_log}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print("rpc verify/event fell back to hardhat:", exc)
+        valid = None
 
-    res = _run_node("scripts/verifyScoreEvent.js", {"SCORE_EVENT_FILE": tmp})
-    hashes = _scrape_hashes(res["log"])
-    low = res["log"].lower()
-    valid = res["ok"] and ("valid" in low) and ("invalid" not in low)
+    if valid is None:
+        tmp = os.path.join(CHAIN_DIR or ".", "_verify_input.json")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            json.dump(ev, fh, indent=2)
+
+        res = _run_node("scripts/verifyScoreEvent.js",
+                        {"SCORE_EVENT_FILE": tmp})
+        hashes = _scrape_hashes(res["log"])
+        low = res["log"].lower()
+        valid = res["ok"] and ("valid" in low) and ("invalid" not in low)
 
     name, base, chain_id = _explorer()
     return {
@@ -678,8 +771,9 @@ def verify_hash(body: VerifyHashBody):
     if not re.fullmatch(r"0x[0-9a-fA-F]{64}", h):
         raise HTTPException(
             400, "a userHash is 0x followed by 64 hex characters")
-    res = _run_node("scripts/readLatestRecord.js", {"USER_HASH": h})
-    rec = _scrape_hashes(res["log"])
+    rr = _read_record(h)
+    res = {"ok": rr["ok"], "log": rr["log"]}
+    rec = rr["rec"]
     name, base, chain_id = _explorer()
     found = res["ok"] and any(
         rec[k] for k in ("scoreEventHash", "merkleRoot", "score"))
@@ -1092,8 +1186,9 @@ def verify_identity(body: VerifyIdentityBody, request: Request):
             raise HTTPException(500, "computed handle is not a 32 byte hash")
         tried.append({"name": normalise_name(variant), "user_hash": cand})
         h = cand
-        res = _run_node("scripts/readLatestRecord.js", {"USER_HASH": cand})
-        rec = _scrape_hashes(res["log"])
+        rr = _read_record(cand)
+        res = {"ok": rr["ok"], "log": rr["log"]}
+        rec = rr["rec"]
         # A record exists only when the registry returns a non-zero
         # scoreEventHash AND a non-zero timestamp. Anything else is the empty
         # struct latestRecordByUserHash returns for an unknown userHash.
@@ -1248,8 +1343,9 @@ def verify_tx(body: VerifyTxBody, request: Request):
 
     # 2. the contract must currently hold that hash for this identity.
     user_hash = str(stored.get("user_hash") or "")
-    res = _run_node("scripts/readLatestRecord.js", {"USER_HASH": user_hash})
-    chain_rec = _scrape_hashes(res["log"])
+    rr = _read_record(user_hash)
+    res = {"ok": rr["ok"], "log": rr["log"]}
+    chain_rec = rr["rec"]
     on_chain = str(chain_rec.get("scoreEventHash") or "").lower()
     chain_ok = bool(on_chain) and on_chain == anchored_hash
 

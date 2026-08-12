@@ -468,9 +468,10 @@ def _write_event(rec: Dict[str, Any]) -> str:
     if not out and CHAIN_DIR:
         out = os.path.join(CHAIN_DIR, "score-event.json")
     if not out:
-        raise HTTPException(
-            400, "set IBEX_SCORE_EVENT_PATH or IBEX_CHAIN_DIR so the "
-                 "score event has somewhere to go")
+        # Direct-RPC deployments have no chain folder on disk; keep the
+        # event beside the anchor records.
+        out = os.path.join(_HERE, "_anchors", "latest-score-event.json")
+        os.makedirs(os.path.dirname(out), exist_ok=True)
 
     try:
         from serve.chain_hash import chain_user_id
@@ -594,11 +595,14 @@ def chain_submit(body: SubmitBody,
     if not rec:
         raise HTTPException(400, "no score yet -- connect a bank first")
 
-    if not CHAIN_DIR:
+    from serve import chain_rpc
+    use_rpc = chain_rpc.write_available()
+    if not CHAIN_DIR and not use_rpc:
         raise HTTPException(
-            500, "IBEX_CHAIN_DIR is not set, so the server cannot find the "
-                 "hardhat project to anchor with. Set it to the folder "
-                 "containing hardhat.config.js and .env, then restart.")
+            500, "no chain backend configured. Set IBEX_CHAIN_DIR to the "
+                 "hardhat project folder (local), or PRIVATE_KEY + "
+                 "POLYGON_RPC_URL + IBEX_CHAIN_NETWORK=polygon for direct "
+                 "anchoring (hosted).")
 
     path = _write_event(rec)
     print("score event written to:", path)
@@ -608,16 +612,95 @@ def chain_submit(body: SubmitBody,
     # for example the old V1 chain folder -- the script cannot see the
     # event and fails with ENOENT. Mirror the event into the chain folder
     # so the write location and the read location can never drift apart.
-    mirror = os.path.join(CHAIN_DIR, "score-event.json")
-    try:
-        if os.path.abspath(path) != os.path.abspath(mirror):
-            import shutil
-            shutil.copyfile(path, mirror)
-            print("score event mirrored to:", mirror)
-    except Exception as exc:
-        print("could not mirror the score event into the chain folder:", exc)
+    if CHAIN_DIR:
+        mirror = os.path.join(CHAIN_DIR, "score-event.json")
+        try:
+            if os.path.abspath(path) != os.path.abspath(mirror):
+                import shutil
+                shutil.copyfile(path, mirror)
+                print("score event mirrored to:", mirror)
+        except Exception as exc:
+            print("could not mirror the score event into the chain folder:",
+                  exc)
 
-    if body.dry_run or CHAIN_NETWORK not in EXPLORERS:
+    hashes: Dict[str, Optional[str]] = {}
+    if body.dry_run:
+        res = _run_hardhat("demo")
+        net = "local"
+    elif use_rpc:
+        # Direct JSON-RPC: no node runtime. The hashes are computed
+        # in-process by chain_hash, byte-identical to the chain repo's
+        # utils (proven against the live contract).
+        try:
+            with open(path, encoding="utf-8") as fh:
+                ev = json.load(fh)
+            from serve.chain_hash import configured_salt
+            salt = configured_salt(CHAIN_DIR)
+            if len(salt) < 16:
+                raise HTTPException(
+                    500, "USER_SALT is not configured (16 chars minimum). "
+                         "It must be byte-identical to the value used by "
+                         "every previous anchor.")
+            from serve.chain_hash import (
+                user_hash as _uh, score_event_hash as _seh,
+                model_version_hash as _mvh)
+            period = chain_rpc.score_period_of(ev)
+            uh = _uh(str(ev.get("userId", "")), salt)
+            seh = _seh(ev)
+            mvh = _mvh(str(ev.get("modelVersion", "")))
+            # Preflight: one anchor per identity every 28 days and a
+            # strictly newer YYYYMM period. Read first and explain rather
+            # than failing at estimateGas with an opaque custom error.
+            erec = chain_rpc.read_record(uh)["rec"]
+            if erec.get("timestampEpoch") and erec["timestampEpoch"] != "0":
+                anchored_at = int(erec["timestampEpoch"])
+                next_at = chain_rpc.next_submission_at(uh)
+                now_ts = int(time.time())
+                when = datetime.fromtimestamp(
+                    anchored_at, tz=timezone.utc).strftime(
+                        "%d %b %Y %H:%M UTC")
+                if next_at and now_ts < next_at:
+                    when_next = datetime.fromtimestamp(
+                        next_at, tz=timezone.utc).strftime(
+                            "%d %b %Y %H:%M UTC")
+                    raise HTTPException(
+                        429, "this identity is already anchored (" + when +
+                             "). The contract allows one update per identity "
+                             "every 28 days -- next allowed " + when_next +
+                             ". The existing record is still fully "
+                             "verifiable on the business page. To test a "
+                             "fresh anchor, sign up a second test user: a "
+                             "different email is a different identity.")
+                old_period = int(erec.get("scorePeriod") or 0)
+                if old_period and old_period >= period:
+                    raise HTTPException(
+                        429, "this identity is already anchored for a score "
+                             "period at least as new as this one, and the "
+                             "contract requires a strictly newer month. The "
+                             "existing record is still fully verifiable on "
+                             "the business page.")
+        except HTTPException:
+            raise
+        except chain_rpc.ChainRevert as exc:
+            raise HTTPException(exc.status, str(exc))
+        except Exception as exc:
+            raise HTTPException(
+                502, f"could not preflight the anchor: {exc}")
+
+        try:
+            tx_hash, rpc_log = chain_rpc.submit_score_root(
+                uh, seh, seh, mvh, period)
+        except chain_rpc.ChainRevert as exc:
+            raise HTTPException(exc.status, str(exc))
+        except Exception as exc:
+            raise HTTPException(502, f"direct RPC anchoring failed: {exc}")
+
+        hashes = {"userHash": uh, "scoreEventHash": seh,
+                  "modelVersionHash": mvh, "merkleRoot": seh,
+                  "txHash": tx_hash}
+        res = {"ok": True, "code": 0, "stdout": rpc_log, "stderr": ""}
+        net = CHAIN_NETWORK if CHAIN_NETWORK in EXPLORERS else "polygon"
+    elif CHAIN_NETWORK not in EXPLORERS:
         res = _run_hardhat("demo")
         net = "local"
     else:
@@ -662,7 +745,8 @@ def chain_submit(body: SubmitBody,
         res = _run_hardhat(f"submit:{CHAIN_NETWORK}", timeout=420)
         net = CHAIN_NETWORK
 
-    hashes = _scrape(res.get("stdout", ""))
+    if not hashes:
+        hashes = _scrape(res.get("stdout", ""))
     ex = _explorer()
     links: Dict[str, str] = {}
     if ex and net != "local":

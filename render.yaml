@@ -11,6 +11,8 @@ services:
         value: "3.12.7"
       - key: TRUELAYER_SANDBOX
         value: "1"
+      - key: IBEX_CHAIN_NETWORK
+        value: polygon
       - key: SCORE_AUDIT_V2_CONTRACT_ADDRESS
         value: 0x8621D09F08C2f58803e7239F8D46D444e0eF63e1
       - key: POLYGON_RPC_URL

@@ -11,7 +11,7 @@ or entered in the Render dashboard. This file is the checklist.
 |---|---|---|
 | `serve/users.json` | first signup | emails + PBKDF2 password hashes |
 | `serve/_anchors/*.json` | each on-chain anchor | the anchored score events |
-| `chain/score-event.json` | each score | the latest score event preimage |
+| `chain/score-event.json` | each score (local hardhat flow) | the latest score event preimage |
 
 If any of these are already tracked by git, untrack them once:
 
@@ -36,10 +36,10 @@ $env:IBEX_SCORE_EVENT_PATH="C:\Users\Josep\Downloads\hackathon_2026\ibex-smart-c
 py -3.13 -m uvicorn serve.app:app --port 8000
 ```
 
-Note: the repo also vendors the V2 chain project at `chain/`. Locally you can
-point `IBEX_CHAIN_DIR` at either the vendored copy or your standalone clone —
-they are the same code. The standalone clone keeps its own `.env` with the
-real `PRIVATE_KEY` and `USER_SALT`; the vendored copy must never contain one.
+Locally the hardhat scripts in `chain/` (or your standalone clone) do the
+anchoring, unchanged. If `PRIVATE_KEY` is also set in the server environment
+the server prefers its built-in direct-RPC path instead — same contract,
+same hashes, no node.
 
 ## 3. Chain configuration
 
@@ -55,32 +55,36 @@ SCORE_AUDIT_V2_CONTRACT_ADDRESS=0x8621D09F08C2f58803e7239F8D46D444e0eF63e1
 POLYGON_EXPLORER_BASE_URL=https://polygonscan.com
 ```
 
-## 4. Render (Docker — the fully working deployment)
+## 4. Render — the plain Python service is enough
 
-The repo root `Dockerfile` builds Python 3.12 + Node 20 + the vendored chain
-project. Render auto-detects it; `render.yaml` sets `runtime: docker`.
+`serve/chain_rpc.py` anchors and verifies **directly over JSON-RPC** — a
+pure-Python client (RFC 6979 signing, RLP, ABI) validated against the
+published EIP-155 test vector. No Node runtime, no Docker, no hardhat
+subprocess. Your existing Python web service gets full chain support just
+by deploying this code.
+
+(A `Dockerfile` and the vendored `chain/` project are still included and
+also work — they're simply no longer required for chain functionality.)
 
 Set these in the service's **Environment** tab:
 
 | Variable | Value | Notes |
 |---|---|---|
+| `IBEX_ARTIFACTS` | `artifacts_v5` | without it the service silently serves the old model |
+| `OBCREDIT_ARTIFACTS` | `artifacts_v5` | same |
 | `TRUELAYER_CLIENT_ID` | `sandbox-ibexcredit-132352` | |
 | `TRUELAYER_CLIENT_SECRET` | the real sandbox secret | secret |
 | `TRUELAYER_REDIRECT_URI` | `https://<service>.onrender.com/callback` | must also be registered in the TrueLayer console |
-| `PRIVATE_KEY` | the issuer wallet key | secret; the chain scripts inherit it — dotenv does not override existing env vars |
-| `USER_SALT` | the same 64-hex salt as every anchor so far | secret; do not rotate |
-| `SCORE_AUDIT_V2_CONTRACT_ADDRESS` | `0x8621D09F08C2f58803e7239F8D46D444e0eF63e1` | declared in render.yaml |
-| `POLYGON_RPC_URL` | `https://polygon-bor-rpc.publicnode.com` | declared in render.yaml |
-| `TRUELAYER_SANDBOX` | `1` | declared in render.yaml |
-| `PYTHON_VERSION` | `3.12.7` | declared in render.yaml |
+| `TRUELAYER_SANDBOX` | `1` | |
+| `IBEX_CHAIN_NETWORK` | `polygon` | drives explorer links on the score page |
+| `POLYGON_RPC_URL` | `https://polygon-bor-rpc.publicnode.com` | public fallbacks are built in |
+| `SCORE_AUDIT_V2_CONTRACT_ADDRESS` | `0x8621D09F08C2f58803e7239F8D46D444e0eF63e1` | |
+| `PRIVATE_KEY` | the issuer wallet key | secret — used only to sign anchors |
+| `USER_SALT` | the same 64-hex salt as every anchor so far | secret; **do not rotate** — a different salt makes every existing anchor unreachable |
 
-Baked into the image (Dockerfile `ENV`), no dashboard entry needed:
-`IBEX_ARTIFACTS=artifacts_v5`, `OBCREDIT_ARTIFACTS=artifacts_v5`,
-`IBEX_CHAIN_DIR=/app/chain`, `IBEX_CHAIN_NETWORK=polygon`,
-`SCORE_EVENT_FILE=./score-event.json`.
-
-Leave unset on Render: `IBEX_OB_MATRIX` (its absence is what makes the admin
-cohort fall back to the bundled 100-row sample).
+Leave unset on Render: `IBEX_CHAIN_DIR`, `IBEX_SCORE_EVENT_PATH`,
+`IBEX_OB_MATRIX` (its absence is what makes the admin cohort fall back to
+the bundled 100-row sample).
 
 ## 5. The admin cohort on Render (512 MB)
 
@@ -99,5 +103,7 @@ git add fixtures/ob_matrix_admin100.pkl
 
 Render's filesystem is ephemeral: redeploys wipe `serve/users.json` and
 `serve/_anchors/`. Accounts re-register in seconds and the chain records are
-untouched; the business page's file-based verification keeps working
-regardless. The production fix is a persistent disk or managed database.
+untouched; the business page's file-based and name+email verification keep
+working regardless, because they recompute and read the chain directly.
+Transaction-id lookup of pre-redeploy anchors is the one thing that needs
+the same disk. The production fix is a persistent disk or managed database.
