@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>OpenBank Credit Score</title>
+<style>
+  :root{
+    --bg:#061310; --bg2:#08190f; --panel:#0b2116; --panel2:#0e2a1c;
+    --line:#1c3d2b; --line2:#2a5138;
+    --brg:#0b5c3b; --brg2:#12854f; --brg3:#0a4a30;
+    --gold:#c8a96a; --gold2:#e3c98d;
+    --ink:#eef5ef; --muted:#8fae9d; --muted2:#6f9080;
+    --up:#e08a6a; --down:#5fd39a; --danger:#d98a6a;
+    --serif:Georgia,'Times New Roman',serif;
+    --sans:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:var(--sans); color:var(--ink);
+    background:
+      radial-gradient(1200px 600px at 12% -10%, rgba(18,133,79,.18), transparent 60%),
+      radial-gradient(900px 500px at 100% 0%, rgba(200,169,106,.08), transparent 55%),
+      linear-gradient(180deg,var(--bg),var(--bg2));
+    min-height:100vh; letter-spacing:.1px;
+  }
+  .wrap{max-width:1180px; margin:0 auto; padding:34px 26px 60px}
+  header .brandline{display:flex; align-items:center; gap:16px}
+  .crest{
+    width:52px;height:52px;border-radius:13px;flex:0 0 auto;
+    display:flex;align-items:center;justify-content:center;
+    font-size:26px;color:#04160d;font-weight:700;
+    background:linear-gradient(150deg,var(--gold2),var(--gold));
+    box-shadow:0 6px 22px rgba(0,0,0,.45), inset 0 0 0 1px rgba(255,255,255,.25);
+  }
+  h1{font-family:var(--serif); font-weight:600; font-size:27px; margin:0; letter-spacing:.3px}
+  h1 .thin{color:var(--gold2); font-style:italic; font-weight:500}
+  .tag{color:var(--muted); font-size:13.5px; margin-top:3px}
+  .rule{height:1px;background:linear-gradient(90deg,transparent,var(--gold),transparent);opacity:.5;margin:20px 0 22px}
+  .banner{border-radius:11px;padding:11px 15px;font-size:13.5px;border:1px solid var(--line);margin-bottom:18px}
+  .banner.ok{background:rgba(18,133,79,.13);border-color:var(--brg2);color:#bfe9cf}
+  .banner.err{background:rgba(217,138,106,.12);border-color:#7a4a37;color:#f0c3ac}
+  .grid{display:grid;grid-template-columns:1.02fr 1fr;gap:24px}
+  @media(max-width:900px){.grid{grid-template-columns:1fr}}
+  .card{
+    background:linear-gradient(180deg,var(--panel2),var(--panel));
+    border:1px solid var(--line); border-radius:18px; padding:26px 26px 28px;
+    box-shadow:0 18px 46px rgba(0,0,0,.4), inset 0 1px 0 rgba(255,255,255,.03);
+  }
+  .sec{display:flex;align-items:center;gap:10px;font-family:var(--serif);
+       font-size:12.5px;letter-spacing:2.4px;text-transform:uppercase;color:var(--gold);margin:0 0 18px}
+  .sec .n{width:22px;height:22px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+          font-family:var(--sans);font-size:12px;color:#04160d;background:linear-gradient(150deg,var(--gold2),var(--gold));font-weight:700}
+  .field{margin-bottom:15px}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:6px;letter-spacing:.4px}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  select,input{
+    width:100%;background:#071c12;color:var(--ink);border:1px solid var(--line2);
+    border-radius:10px;padding:11px 12px;font-size:14px;font-family:var(--sans);
+    appearance:none;-webkit-appearance:none;transition:border-color .15s,box-shadow .15s;
+  }
+  select{background-image:linear-gradient(45deg,transparent 50%,var(--gold) 50%),linear-gradient(135deg,var(--gold) 50%,transparent 50%);
+         background-position:calc(100% - 18px) 18px,calc(100% - 13px) 18px;background-size:5px 5px,5px 5px;background-repeat:no-repeat}
+  select:focus,input:focus{outline:none;border-color:var(--brg2);box-shadow:0 0 0 3px rgba(18,133,79,.18)}
+  .subhead{font-family:var(--serif);font-size:12.5px;letter-spacing:2.4px;text-transform:uppercase;color:var(--gold);margin:24px 0 13px}
+  .btn{
+    width:100%;border:none;border-radius:12px;padding:15px 16px;font-size:15px;font-weight:600;
+    cursor:pointer;font-family:var(--sans);color:#04160d;letter-spacing:.3px;
+    background:linear-gradient(140deg,var(--brg2),var(--brg));
+    box-shadow:0 10px 26px rgba(11,92,59,.45), inset 0 1px 0 rgba(255,255,255,.18);
+    transition:transform .08s ease, filter .15s ease;
+    display:flex;align-items:center;justify-content:center;gap:10px;
+  }
+  .btn:hover{filter:brightness(1.07)}
+  .btn:active{transform:translateY(1px)}
+  .btn[disabled]{opacity:.6;cursor:default}
+  .btn .tl{width:19px;height:19px;border-radius:5px;background:#04160d;color:var(--gold2);
+           display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:800}
+  .btn.ghost{background:transparent;color:var(--gold2);border:1px solid var(--line2);
+             box-shadow:none;font-weight:500;font-size:13.5px;padding:11px}
+  .btn.ghost:hover{border-color:var(--gold);filter:none;background:rgba(200,169,106,.06)}
+  .note{font-size:11.5px;color:var(--muted2);text-align:center;margin-top:11px;line-height:1.5}
+  .tlsetup{display:none;margin-top:14px;border:1px dashed var(--line2);border-radius:12px;
+           padding:15px 16px;background:rgba(200,169,106,.05)}
+  .tlsetup h4{margin:0 0 9px;font-family:var(--serif);font-size:13.5px;color:var(--gold2);letter-spacing:.4px}
+  .tlsetup ol{margin:0;padding-left:19px;font-size:12.5px;color:var(--muted);line-height:1.75}
+  .tlsetup code{background:#04160d;border:1px solid var(--line2);border-radius:5px;padding:1px 6px;
+                font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11.5px;color:var(--gold2)}
+  .tlsetup a{color:var(--brg2)}
+  .pills{display:grid;grid-template-columns:repeat(3,1fr);gap:11px;margin-bottom:16px}
+  .pill{background:#071c12;border:1px solid var(--line2);border-radius:12px;padding:12px 12px;cursor:pointer;
+        transition:border-color .15s,background .15s}
+  .pill:hover{border-color:var(--brg2)}
+  .pill.active{border-color:var(--gold);background:rgba(200,169,106,.09);box-shadow:0 0 0 1px var(--gold) inset}
+  .pill b{display:block;font-size:13.5px;margin-bottom:3px}
+  .pill span{font-size:11px;color:var(--muted2);line-height:1.45}
+  .fallback{display:none;margin-top:6px}
+  /* result */
+  #placeholder{display:flex;flex-direction:column;align-items:center;justify-content:center;
+               min-height:440px;color:var(--muted2);text-align:center;gap:12px}
+  #placeholder .big{font-size:44px;opacity:.5}
+  #placeholder .lead{font-family:var(--serif);font-size:16px;color:var(--muted);font-style:italic}
+  .reshead{display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}
+  .reshead h2{font-family:var(--serif);font-weight:600;font-size:20px;margin:0}
+  .src{font-size:11px;padding:5px 10px;border-radius:20px;letter-spacing:.4px}
+  .src.live{color:#04160d;background:linear-gradient(140deg,var(--gold2),var(--gold));font-weight:700}
+  .src.demo{color:var(--muted);border:1px solid var(--line2)}
+  .gaugewrap{display:flex;flex-direction:column;align-items:center;margin:6px 0 22px}
+  .gauge{position:relative;width:230px;height:230px}
+  .gauge .score{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center}
+  .gauge .score b{font-size:52px;font-family:var(--serif);line-height:1}
+  .gauge .score small{color:var(--muted);font-size:11px;letter-spacing:2.5px;margin-top:7px}
+  .band{margin-top:6px;padding:8px 18px;border-radius:22px;font-weight:600;font-size:14px}
+  .kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:22px}
+  .kpi{background:#071c12;border:1px solid var(--line);border-radius:12px;padding:14px 10px;text-align:center}
+  .kpi b{display:block;font-family:var(--serif);font-size:20px}
+  .kpi span{font-size:11px;color:var(--muted2);letter-spacing:.3px}
+  .reasons h3{font-family:var(--serif);font-size:12.5px;letter-spacing:1.6px;text-transform:uppercase;
+              color:var(--gold);margin:18px 0 9px;font-weight:600}
+  .reason{display:flex;align-items:center;gap:10px;padding:8px 0;font-size:13.5px;border-bottom:1px solid rgba(28,61,43,.5)}
+  .reason.muted{color:var(--muted2);font-size:12.5px}
+  .dot{width:8px;height:8px;border-radius:50%;flex:0 0 auto}
+  .dot.up{background:var(--up)} .dot.down{background:var(--down)}
+  .foot{margin-top:18px;font-size:11.5px;color:var(--muted2);line-height:1.6;border-top:1px solid var(--line);padding-top:14px}
+  .spin{width:15px;height:15px;border:2px solid rgba(4,22,13,.35);border-top-color:#04160d;border-radius:50%;
+        display:inline-block;animation:sp .7s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="brandline">
+      <div class="crest">£</div>
+      <a href="/static/dashboard.html" style="margin-left:auto;align-self:center;color:inherit;text-decoration:none;font-size:13px;font-weight:600">Dashboard →</a>
+      <div>
+        <h1>OpenBank <span class="thin">Credit Score</span></h1>
+        <div class="tag">Connect your bank · declare your profile · receive a model-driven, calibrated score</div>
+      </div>
+    </div>
+  </header>
+  <div class="rule"></div>
+  <div id="health"></div>
+
+  <div class="grid">
+    <!-- LEFT -->
+    <div class="card">
+      <div class="sec"><span class="n">1</span> Your details</div>
+
+      <div class="field">
+        <label>Employment tenure</label>
+        <select id="employment">
+          <option value="MORE_ONE_YEAR">Employed &gt; 1 year</option>
+          <option value="LESS_ONE_YEAR">Employed &lt; 1 year</option>
+          <option value="SELF_EMPLOYED">Self-employed</option>
+          <option value="RETIRED">Retired</option>
+          <option value="UNEMPLOYED">Not currently employed</option>
+        </select>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label>Income type</label>
+          <select id="income_type">
+            <option value="SALARIED">Salaried employment</option>
+            <option value="SELF_EMPLOYED_INCOME">Self-employed income</option>
+            <option value="PENSION">Pension</option>
+            <option value="BENEFITS">State benefits</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Housing</label>
+          <select id="housing">
+            <option value="OWNED">Homeowner – no mortgage</option>
+            <option value="OWNED_WITH_MORTGAGE">Homeowner – mortgage</option>
+            <option value="RENTING">Renting</option>
+            <option value="LIVING_WITH_FAMILY">Living with family</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row2">
+        <div class="field">
+          <label>Education</label>
+          <select id="education">
+            <option value="HIGHER_EDU">Higher education</option>
+            <option value="SECONDARY">Secondary</option>
+            <option value="VOCATIONAL">Vocational</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Stated monthly income (£)</label>
+          <input id="stated_income" type="number" min="0" step="50" value="2500"/>
+        </div>
+      </div>
+
+      <div class="sec" style="margin-top:22px"><span class="n">2</span> Connect your bank</div>
+
+      <button class="btn" id="connect"><span class="tl">tl</span> Connect with TrueLayer</button>
+      <div class="note">Opens TrueLayer’s secure sign-in. Choose <b>Mock Bank</b> in the sandbox to log in with test credentials. Your bank data is reconstructed into the same features used to train the model — no credentials are stored here.</div>
+
+      <div class="tlsetup" id="tlnote">
+        <h4>One-time setup to enable the live connection</h4>
+        <ol>
+          <li>Create a <b>sandbox</b> app at <a href="https://console.truelayer.com" target="_blank" rel="noopener">console.truelayer.com</a> and copy its <b>client_id</b> / <b>client_secret</b>.</li>
+          <li>Add the redirect URI <code>http://localhost:8000/callback</code> to that app.</li>
+          <li>Set them before launching the server, then restart:<br>
+            <code>$env:TRUELAYER_CLIENT_ID="…"</code><br>
+            <code>$env:TRUELAYER_CLIENT_SECRET="…"</code></li>
+        </ol>
+      </div>
+
+      <button class="btn ghost" id="demoToggle" style="margin-top:14px">Use a demo profile instead ↓</button>
+      <div class="fallback" id="fallback">
+        <div class="subhead">Demo open-banking profile</div>
+        <div class="pills" id="profiles">
+          <div class="pill active" data-p="clean"><b>Clean payer</b><span>No arrears, healthy balance</span></div>
+          <div class="pill" data-p="thin"><b>Thin file</b><span>Low balance, one late payment</span></div>
+          <div class="pill" data-p="arrears"><b>Arrears</b><span>Missed / very late payments</span></div>
+        </div>
+        <button class="btn" id="go">Score demo profile</button>
+      </div>
+    </div>
+
+    <!-- RIGHT -->
+    <div class="card">
+      <div id="placeholder">
+        <div class="big">◉</div>
+        <div class="lead">Your result will appear here</div>
+        <div style="font-size:12.5px;max-width:280px">Fill in your details, then connect a bank (or score a demo profile) to see your credit score, risk band and the factors behind it.</div>
+      </div>
+      <div id="result" style="display:none"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const BANDS={A:'#2e8b57',B:'#4fae74',C:'#c8a96a',D:'#d98a3f',E:'#c0492f'};
+let profile='clean';
+let tlConfigured=false;
+
+function $(id){return document.getElementById(id);}
+function escapeHtml(s){return (s||'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+
+document.querySelectorAll('#profiles .pill').forEach(p=>{
+  p.onclick=()=>{
+    document.querySelectorAll('#profiles .pill').forEach(x=>x.classList.remove('active'));
+    p.classList.add('active'); profile=p.dataset.p;
+  };
+});
+
+$('demoToggle').onclick=()=>{
+  const f=$('fallback'); const open=f.style.display==='block';
+  f.style.display=open?'none':'block';
+  $('demoToggle').innerHTML=open?'Use a demo profile instead ↓':'Hide demo profiles ↑';
+};
+
+function formVals(){
+  return {
+    employment:$('employment').value, income_type:$('income_type').value,
+    education:$('education').value, housing:$('housing').value,
+    stated_income:$('stated_income').value||'0',
+  };
+}
+
+async function checkHealth(){
+  try{
+    const j=await (await fetch('/api/health')).json();
+    $('health').innerHTML=j.ok
+      ? `<div class="banner ok">Model ready &mdash; ${escapeHtml(j.build||'')}</div>`
+      : `<div class="banner err"><b>Model not loaded.</b> ${escapeHtml(j.detail)}</div>`;
+  }catch(e){}
+}
+
+async function checkTL(){
+  try{
+    const j=await (await fetch('/api/tl/status')).json();
+    tlConfigured=!!j.configured;
+    if(!tlConfigured) $('tlnote').style.display='block';
+  }catch(e){}
+}
+
+function gauge(score){
+  const t=Math.max(0,Math.min(1,(score-300)/600));
+  const R=100,C=2*Math.PI*R,off=C*(1-t);
+  return `<svg width="230" height="230" viewBox="0 0 230 230">
+    <circle cx="115" cy="115" r="${R}" stroke="#123122" stroke-width="15" fill="none"/>
+    <circle cx="115" cy="115" r="${R}" stroke="url(#g)" stroke-width="15" fill="none"
+      stroke-linecap="round" stroke-dasharray="${C}" stroke-dashoffset="${off}"
+      transform="rotate(-90 115 115)"/>
+    <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#12854f"/><stop offset="1" stop-color="#e3c98d"/>
+    </linearGradient></defs></svg>`;
+}
+
+function render(d){
+  $('placeholder').style.display='none';
+  const res=$('result'); res.style.display='block';
+  const col=BANDS[d.band]||'#c8a96a';
+  const inc=d.monthly_income_detected!=null?('£'+Number(d.monthly_income_detected).toLocaleString()):'—';
+  const live=d.source==='truelayer';
+  const chip=live?'<span class="src live">● Live TrueLayer sandbox</span>':'<span class="src demo">Demo profile</span>';
+  const adverse=(d.adverse_reasons||[]).map(r=>`<div class="reason"><span class="dot up"></span><span>${escapeHtml(r.label)}</span></div>`).join('')||'<div class="reason muted">None material</div>';
+  const good=(d.positive_reasons||[]).map(r=>`<div class="reason"><span class="dot down"></span><span>${escapeHtml(r.label)}</span></div>`).join('')||'<div class="reason muted">None material</div>';
+  res.innerHTML=`
+    <div class="reshead"><h2>Your result</h2>${chip}</div>
+    <div class="gaugewrap">
+      <div class="gauge">${gauge(d.score)}
+        <div class="score"><b style="color:${col}">${Math.round(d.score)}</b><small>CREDIT SCORE</small></div>
+      </div>
+      <div class="band" style="background:${col}22;color:${col};border:1px solid ${col}">Band ${d.band} · PD ${(d.pd*100).toFixed(1)}%</div>
+    </div>
+    <div class="kpis">
+      <div class="kpi"><b>${inc}</b><span>Detected income</span></div>
+      <div class="kpi"><b>${d.num_obligations}</b><span>Credit lines</span></div>
+      <div class="kpi"><b>${d.num_features}</b><span>Model features</span></div>
+    </div>
+    <div class="reasons">
+      <h3>Top factors lowering the score</h3>${adverse}
+      <h3>Top factors supporting the score</h3>${good}
+    </div>
+    <div class="foot">${escapeHtml(d.profile_label||'')} &mdash; score is a PDO transform of an isotonic-calibrated probability of default from a LightGBM model, built with the identical feature pipeline used in training.</div>`;
+}
+
+function showError(msg){
+  $('placeholder').style.display='flex';
+  $('placeholder').innerHTML='<div class="big">⚠️</div><div class="lead">Something went wrong</div><div style="font-size:12.5px;max-width:300px">'+escapeHtml(msg)+'</div>';
+  $('result').style.display='none';
+}
+
+function setBusy(btn,on,label){
+  btn.disabled=on;
+  if(on){btn.dataset.old=btn.innerHTML;btn.innerHTML='<span class="spin"></span> '+(label||'Working…');}
+  else if(btn.dataset.old){btn.innerHTML=btn.dataset.old;}
+}
+
+// --- live TrueLayer connect ---
+$('connect').onclick=()=>{
+  if(!tlConfigured){
+    $('tlnote').style.display='block';
+    $('tlnote').scrollIntoView({behavior:'smooth',block:'nearest'});
+    return;
+  }
+  const q=new URLSearchParams(formVals()).toString();
+  window.location.href='/connect?'+q;
+};
+
+// --- demo profile score ---
+$('go').onclick=async()=>{
+  const btn=$('go'); setBusy(btn,true,'Scoring…');
+  const body=Object.assign(formVals(),{stated_income:parseFloat(formVals().stated_income||'0'),profile});
+  try{
+    const r=await fetch('/api/score',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    if(!r.ok){const e=await r.json();throw new Error(e.detail||('HTTP '+r.status));}
+    render(await r.json());
+  }catch(err){showError(err.message);}
+  finally{setBusy(btn,false);}
+};
+
+// --- handle return from TrueLayer ---
+async function scoreLive(token){
+  setBusy($('connect'),true,'Scoring your account…');
+  try{
+    const r=await fetch('/api/score-live',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token})});
+    if(!r.ok){const e=await r.json();throw new Error(e.detail||('HTTP '+r.status));}
+    render(await r.json());
+  }catch(err){showError(err.message);}
+  finally{setBusy($('connect'),false);}
+}
+(function(){
+  const p=new URLSearchParams(window.location.search);
+  const tl=p.get('tl'), err=p.get('error');
+  if(tl||err){history.replaceState({},'',window.location.pathname);}
+  if(err){showError('TrueLayer connection error: '+err);}
+  else if(tl){scoreLive(tl);}
+})();
+
+checkHealth();
+checkTL();
+</script>
+</body>
+</html>

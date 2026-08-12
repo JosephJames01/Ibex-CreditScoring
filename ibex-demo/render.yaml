@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: ibex-credit
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn serve.app:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.7"
+      - key: IBEX_ARTIFACTS
+        value: artifacts_v5
+      - key: OBCREDIT_ARTIFACTS
+        value: artifacts_v5
+      - key: TRUELAYER_SANDBOX
+        value: "1"
+      - key: IBEX_CHAIN_NETWORK
+        value: none        # chain demo runs locally; Render has no Node runtime
+      # secrets -- set these in the Render dashboard, never in the repo:
+      - key: TRUELAYER_CLIENT_ID
+        sync: false
+      - key: TRUELAYER_CLIENT_SECRET
+        sync: false
+      - key: TRUELAYER_REDIRECT_URI
+        sync: false        # https://<your-service>.onrender.com/callback
