@@ -46,10 +46,40 @@ class ChainRevert(Exception):
 # ----------------------------------------------------------------------
 # configuration
 # ----------------------------------------------------------------------
+def _clean_hex(raw: str, what: str, length: int) -> str:
+    """Tolerate dashboard pastes: invisible characters, quotes, a copied
+    polygonscan URL, a missing 0x prefix. Returns lowercase 0x-hex."""
+    for prefix in ("0x", "0X"):
+        if prefix in raw:
+            raw = raw.split(prefix, 1)[1]
+            break
+    raw = "".join(c for c in raw if c in "0123456789abcdefABCDEF")
+    if len(raw) != length:
+        raise ChainRevert(
+            f"{what} does not look right ({len(raw)} hex characters, "
+            f"expected {length}) -- check the value in the service "
+            f"environment", 500)
+    return "0x" + raw.lower()
+
+
 def contract_address() -> str:
-    return (os.environ.get("SCORE_AUDIT_V2_CONTRACT_ADDRESS")
-            or os.environ.get("IBEX_CONTRACT")
-            or DEFAULT_CONTRACT).strip()
+    raw = (os.environ.get("SCORE_AUDIT_V2_CONTRACT_ADDRESS")
+           or os.environ.get("IBEX_CONTRACT")
+           or DEFAULT_CONTRACT).strip()
+    return _clean_hex(raw, "the contract address", 40)
+
+
+_logged_config = False
+
+
+def _log_config_once(sender: str = "") -> None:
+    """One startup-style line in the service log so a misconfigured deploy
+    is diagnosable from the logs alone."""
+    global _logged_config
+    if not _logged_config:
+        print(f"chain_rpc: contract={contract_address()} "
+              f"rpc={_rpc_urls()[0]} sender={sender or '(read-only)'}")
+        _logged_config = True
 
 
 def _rpc_urls() -> List[str]:
@@ -319,6 +349,7 @@ def read_record(user_hash: str) -> Dict[str, Any]:
     """latestRecordByUserHash(bytes32). Returns {"ok","log","rec"} with rec
     shaped exactly like the _scrape_hashes output the hardhat read produced:
     zero values become None / "0" so callers' existence checks keep working."""
+    _log_config_once()
     data = _encode_call("latestRecordByUserHash(bytes32)", [_hex32(user_hash)])
     ret = _rpc("eth_call", [{"to": contract_address(), "data": data}, "latest"])
     raw = bytes.fromhex((ret or "0x")[2:])
@@ -396,13 +427,8 @@ def issuer_daily_usage(address: str) -> Tuple[int, int, int]:
 # ----------------------------------------------------------------------
 def _private_key() -> int:
     raw = os.environ.get("PRIVATE_KEY", "").strip()
-    if raw.startswith("0x"):
-        raw = raw[2:]
-    if len(raw) != 64:
-        raise ChainRevert(
-            "PRIVATE_KEY is not configured (64 hex chars) in the service "
-            "environment", 500)
-    return int(raw, 16)
+    cleaned = _clean_hex(raw, "PRIVATE_KEY", 64)
+    return int(cleaned, 16)
 
 
 def submit_score_root(user_hash: str, score_event_hash: str,
@@ -412,6 +438,7 @@ def submit_score_root(user_hash: str, score_event_hash: str,
     Raises ChainRevert with a decoded, human message on contract reverts."""
     priv = _private_key()
     sender = address_from_priv(priv)
+    _log_config_once(sender)
 
     if is_paused():
         raise ChainRevert("the registry contract is paused", 502)
