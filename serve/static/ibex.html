@@ -81,6 +81,7 @@ max-height:260px;overflow:auto;color:var(--mut)}
 border-top-color:var(--gold);border-radius:50%;animation:s .8s linear infinite;
 vertical-align:-2px;margin-right:7px}
 @keyframes s{to{transform:rotate(360deg)}}
+@media(max-width:640px){.wrap{padding:20px 14px 64px}h1{font-size:25px}.big{font-size:46px;letter-spacing:-1px}.card{padding:18px}header{padding:12px 14px;gap:8px;flex-wrap:wrap}.pill{font-size:11px;padding:4px 9px}.twocol{grid-template-columns:1fr!important}table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}textarea{min-height:120px}button{padding:10px 14px}}
 </style>
 </head>
 <body>
@@ -154,7 +155,7 @@ vertical-align:-2px;margin-right:7px}
     <div id="declaredBox" style="margin:14px 0 16px;padding:16px;border:1px solid #E5E7EB;border-radius:12px;background:#F9FAFB;text-align:left">
       <div style="font-size:14px;font-weight:600;color:#111827;margin-bottom:4px">Before you connect <span style="color:#6B7280;font-weight:400">(optional, ~20 seconds)</span></div>
       <p class="sub" style="margin:0 0 10px;font-size:12px;line-height:1.45">Three declarations improve your score's accuracy. Declared income is cross-checked against what your bank shows. Prefer not to say is fine &mdash; unanswered fields are treated as <i>missing</i>, never as a fabricated default.</p>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+      <div class="twocol" style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
         <label style="margin:0">Monthly income before tax (&pound;)
           <input id="dSal" type="number" min="0" step="50" placeholder="e.g. 2500"></label>
         <label style="margin:0">Employment tenure
